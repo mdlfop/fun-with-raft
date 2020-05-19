@@ -12,6 +12,7 @@ tonic = "0.2.1"
 rand = "0.7.3"
 chrono = "0.4.11" 
 prost = "0.6.1"    
+http = "0.2.1" 
 
 [build-dependencies]
 tonic-build = "0.2.0"

@@ -41,7 +41,7 @@ impl fmt::Display for ServerState {
 pub struct RaftServer {
     id: u64,
     pub peer_ids: Vec<u64>,
-    pub peer_connections: HashMap<u64, String>,
+    pub peer_connections: HashMap<u64, http::Uri>,
 
     current_term: u64,
     voted_for: Option<u64>,
@@ -58,7 +58,7 @@ pub struct RaftServer {
 }
 
 impl RaftServer {
-    fn new(id: u64, peer_ids: Vec<u64>, peer_connections: HashMap<u64, RpcClient<tonic::transport::channel::Channel>>) -> Self {
+    fn new(id: u64, peer_ids: Vec<u64>, peer_connections: HashMap<u64, http::Uri>) -> Self {
         Self {
             id,
             peer_ids,
@@ -133,7 +133,8 @@ impl RaftServer {
             let mut rs = enclosed.0.lock().await;
             rs.debug(format!("sending RequestVote [{:?}]to {}", args, peer_id));
             let reply = { 
-                RpcClient::connect(rs.peer_connections.get(&peer_id).unwrap()).request_vote(args).await.unwrap().into_inner()
+                let mut client = RpcClient::connect(rs.peer_connections.get(&peer_id).unwrap().clone()).await.unwrap();
+                client.request_vote(args).await.unwrap().into_inner()
             };
             rs.debug(format!("received RequestVote reply: [{:?}]", reply));
             if rs.state != ServerState::Candidate {
@@ -165,7 +166,7 @@ impl RaftServer {
 pub struct RaftServerEnclosed(pub Arc<Mutex<RaftServer>>);
 
 impl RaftServerEnclosed {
-    pub async fn new(id: u64, peer_ids: Vec<u64>, peer_connections: HashMap<u64, RpcClient<tonic::transport::channel::Channel>>) -> Self {
+    pub async fn new(id: u64, peer_ids: Vec<u64>, peer_connections: HashMap<u64, http::Uri>) -> Self {
         let a = Self(Arc::new(Mutex::new(RaftServer::new(id, peer_ids, peer_connections))));
         let b = a.clone();
         // add a barrier here @TODO
@@ -229,7 +230,11 @@ impl RaftServerEnclosed {
             let a = async move {
                 let mut rs = enclosed.0.lock().await;
                 rs.debug(format!("sending AppendEntries to {}, args: [{:?}]", peer_id, args));
-                let reply = rs.peer_connections.get_mut(&peer_id).unwrap().append_entry(args).await.unwrap().into_inner();
+                let reply = { 
+                    let mut client = RpcClient::connect(rs.peer_connections.get(&peer_id).unwrap().clone()).await.unwrap();
+                    client.append_entry(args).await.unwrap().into_inner()
+                };
+               
                 if reply.term > saved_current_term {
                     rs.debug(format!("term out of date in heartbeat reply"));
                     rs.become_follower(reply.term, enclosed.clone());

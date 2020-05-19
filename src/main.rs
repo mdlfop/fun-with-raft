@@ -6,7 +6,6 @@ use rpc::rpc_server::{RpcServer};
 use tonic::{transport::Server};
 #[tokio::main]
 async fn main() {
-    println!("Hello, world!");
     let mut handles = vec![];
     let mut nodes = vec![];
     for i in 1..=5 {
